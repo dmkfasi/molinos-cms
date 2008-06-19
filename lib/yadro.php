@@ -51,15 +51,15 @@
 //
 // (c) Justin Forest, 2008.
 //
-// http://code.google.com/p/molinos-cms/source/browse/trunk/lib/yadro.php
+// http://code.google.com/p/molinos-cms/wiki/Yadro
 
 class Yadro
 {
-  private static $methodmap = null;
-  private static $classmap = null;
+  private static $methodmap;
+  private static $classmap;
 
   private static $yadro_debug = false;
-  private static $root = null;
+  private static $root;
 
   public final static function init($initmsg = 'ru_molinos_yadro_start')
   {
@@ -101,7 +101,7 @@ class Yadro
           $tmp = call_user_func(array($class, 'dispatch'),
             $class, $method, $arguments);
           if (null !== $tmp)
-            $results[] = $tmp;
+            $results[$class] = $tmp;
         }
       }
     }
