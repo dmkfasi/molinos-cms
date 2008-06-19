@@ -227,6 +227,11 @@ class Yadro
       return false;
     }
 
+    if (filemtime($cache) < filemtime(__FILE__)) {
+      self::yadro_log('cached classmap is old');
+      return false;
+    }
+
     if (!is_array($tmp = unserialize(file_get_contents($cache)))) {
       self::yadro_log('unable to unserialize cached classmap: '. $tmp);
       return false;
