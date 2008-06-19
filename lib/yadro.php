@@ -83,13 +83,15 @@ class Yadro
   }
 
   // TODO: добавить отлов циклов.
-  protected static final function call($name, array $arguments = array())
+  protected static final function call($name)
   {
     if (null === self::$methodmap)
       throw new Exception('Yadro needs to be initialized befor being used.');
 
     $results = array();
     $method = 'on_'. str_replace('.', '_', $name);
+
+    $arguments = array_slice(func_get_args(), 1);
 
     self::yadro_log('sending '. $name);
 
