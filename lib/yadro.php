@@ -50,6 +50,8 @@
 // Licensed under GPL.  Based on parabellym and influenced by QNX.
 //
 // (c) Justin Forest, 2008.
+//
+// http://code.google.com/p/molinos-cms/source/browse/trunk/lib/yadro.php
 
 class Yadro
 {
@@ -57,11 +59,16 @@ class Yadro
   private static $classmap = null;
 
   private static $yadro_debug = false;
+  private static $root = null;
 
   public final static function init($initmsg = 'ru_molinos_yadro_start')
   {
     if (null !== self::$methodmap)
       throw new Exception("Yadro is already initialized.");
+
+    self::$root = rtrim(empty($_SERVER['SCRIPT_FILENAME'])
+      ? dirname(__FILE__)
+      : dirname($_SERVER['SCRIPT_FILENAME']), '/');
 
     if (self::$yadro_debug = file_exists('.yadro-debug')) {
       if (!ini_get('log_errors'))
@@ -102,6 +109,35 @@ class Yadro
     return empty($results) ? null : $results;
   }
 
+  // Вывод отладочного сообщения.
+  protected final static function debug()
+  {
+    if (ob_get_length())
+      ob_end_clean();
+
+    $output = array();
+
+    if (func_num_args()) {
+      foreach (func_get_args() as $arg) {
+        $output[] = preg_replace('/ =>\s+/', ' => ', var_export($arg, true));
+      }
+    } else {
+      $output[] = 'breakpoint';
+    }
+
+    if (!empty($_SERVER['REQUEST_METHOD']))
+      header("Content-Type: text/plain; charset=utf-8");
+
+    print join(";\n\n", $output) .";\n\n";
+
+    if (true /* !empty($_SERVER['REMOTE_ADDR']) */) {
+      printf("--- backtrace (time: %s) ---\n", microtime());
+      print self::__backtrace();
+    }
+
+    die();
+  }
+
   private static final function dispatch($class, $name, array $arguments)
   {
     self::yadro_log('dispatching '. $name);
@@ -116,12 +152,16 @@ class Yadro
 
   private static function init_method_map()
   {
+    if (self::init_method_map_from_cache())
+      return;
+
     $methods = $classes = array();
 
-    $filemask = 'lib/modules/*/module.*.php';
-    $methodre = '@^\s*protected\s+static\s+function\s+(on_[0-9a-z_]+|dispatch)@mS';
+    $filemask = 'lib/modules/*/{module,class}.*.php';
+    $methodre = '@^\s*protected\s+static\s+function\s+'
+      .'(on_[0-9a-z_]+|dispatch)@mS';
 
-    foreach (glob($filemask, GLOB_NOSORT) as $file) {
+    foreach (glob($filemask, GLOB_BRACE|GLOB_NOSORT) as $file) {
       if (!is_readable($file)) {
         self::yadro_log($file .' is unreadable');
         continue;
@@ -130,20 +170,20 @@ class Yadro
       $content = file_get_contents($file);
 
       if (!preg_match('@^\s*class\s+([a-zA-Z0-9_]+)@m', $content, $m1)) {
-        self::yadro_log($file .' has no class definition');
+        self::yadro_log('[nc] '. $file);
         continue;
       }
 
       // Класс с таким именем уже попадался — пропускаем, иначе будут коллизии.
       if (array_key_exists($classname = $m1[1], $classes)) {
-        self::yadro_log($file .' duplicates class '. $classname);
+        self::yadro_log('[dc] '. $classname .', '. $file);
         continue;
       } else {
         $classes[$m1[1]] = $file;
       }
 
       if (!preg_match_all($methodre, $content, $m2)) {
-        self::yadro_log($file .' defines no handlers');
+        self::yadro_log('[nh] '. $file);
         continue;
       }
 
@@ -155,6 +195,54 @@ class Yadro
 
     self::$classmap = $classes;
     self::$methodmap = $methods;
+
+    if (!is_writable(self::$root)) {
+      self::yadro_log('cwd unwritable, classmap not cached');
+    } else {
+      $cache = serialize(array(
+        'classes' => $classes,
+        'methods' => $methods,
+        ));
+      file_put_contents(self::$root .'/.yadro-classmap', $cache);
+      self::yadro_log('classmap cached in .yadro-classmap');
+    }
+  }
+
+  private static function init_method_map_from_cache()
+  {
+    $cache = self::$root .'/.yadro-classmap';
+
+    if (!is_readable($cache)) {
+      self::yadro_log('no cached class map');
+      return false;
+    }
+
+    if (!filesize($cache)) {
+      self::yadro_log('empty cached classmap');
+      return false;
+    }
+
+    if (filemtime($cache) < filemtime(realpath('lib'))) {
+      self::yadro_log('cached classmap is old');
+      return false;
+    }
+
+    if (!is_array($tmp = unserialize(file_get_contents($cache)))) {
+      self::yadro_log('unable to unserialize cached classmap: '. $tmp);
+      return false;
+    }
+
+    if (!array_key_exists('classes', $tmp))
+      return false;
+    if (!array_key_exists('methods', $tmp))
+      return false;
+
+    self::$classmap = $tmp['classes'];
+    self::$methodmap = $tmp['methods'];
+
+    self::yadro_log('using cached classmap');
+
+    return true;
   }
 
   private static function init_autoload()
@@ -168,20 +256,58 @@ class Yadro
 
   public static function __autoload($classname)
   {
-    self::yadro_log('__autoload called for '. $classname);
-
     if (array_key_exists($classname, self::$classmap)) {
       $filename = self::$classmap[$classname];
 
-      if (!is_readable($filename)) {
+      if (!is_readable(realpath($filename))) {
         self::yadro_log("{$filename} is unreadable, "
           ."failing to autoload {$classname}");
       } else {
-        self::yadro_log("autoloading {$classname} from {$filename}");
-        include($filename);
+        self::yadro_log("loading {$classname} from {$filename}");
+        include(realpath($filename));
       }
     } else {
       self::yadro_log("class {$classname} could not be loaded");
     }
+  }
+
+  private static function __backtrace($stack = null)
+  {
+    $output = '';
+
+    if ($stack instanceof Exception) {
+      $tmp = $stack->getTrace();
+      array_unshift($tmp, array(
+        'file' => $stack->getFile(),
+        'line' => $stack->getLine(),
+        'function' => sprintf('throw new %s', get_class($stack)),
+        ));
+      $stack = $tmp;
+    } elseif (null === $stack or !is_array($stack)) {
+      $stack = debug_backtrace();
+      array_shift($stack);
+    }
+
+    foreach ($stack as $k => $v) {
+      if (!empty($v['class']))
+        $func = $v['class'] .$v['type']. $v['function'];
+      else
+        $func = $v['function'];
+
+      $output .= sprintf("%2d. ", $k + 1);
+
+      if (!empty($v['file']) and !empty($v['line'])) {
+        $path = ltrim(str_replace(self::$root, '', $v['file']), '/');
+        $output .= sprintf('%s(%d) — ', $path, $v['line']);
+      } else {
+        $output .= '??? — ';
+      }
+
+      $output .= $func .'()';
+
+      $output .= "\n";
+    }
+
+    return $output;
   }
 };
