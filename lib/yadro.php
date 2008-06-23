@@ -57,14 +57,19 @@ class Yadro
 {
   private static $methodmap;
   private static $classmap;
+  private static $classmap_cache;
 
   private static $yadro_debug = false;
   private static $root;
+
+  private static $time;
 
   public final static function init($initmsg = 'ru_molinos_yadro_start')
   {
     if (null !== self::$methodmap)
       throw new Exception("Yadro is already initialized.");
+
+    self::$time = microtime(true);
 
     self::$root = rtrim(empty($_SERVER['SCRIPT_FILENAME'])
       ? dirname(__FILE__)
@@ -80,6 +85,12 @@ class Yadro
     self::init_autoload();
 
     self::call($initmsg);
+  }
+
+  public static final function finish()
+  {
+    self::yadro_log(sprintf('request processed in %s msec',
+      microtime(true) - self::$time));
   }
 
   // TODO: добавить отлов циклов.
@@ -112,7 +123,7 @@ class Yadro
   }
 
   // Вывод отладочного сообщения.
-  protected final static function debug()
+  protected final static function dump()
   {
     if (ob_get_length())
       ob_end_clean();
@@ -138,6 +149,12 @@ class Yadro
     }
 
     die();
+  }
+
+  // Корень приложения.
+  public static final function root()
+  {
+    return self::$root;
   }
 
   private static final function dispatch($class, $name, array $arguments)
@@ -212,29 +229,30 @@ class Yadro
 
   private static function init_method_map_from_cache()
   {
-    $cache = self::$root .'/.yadro-classmap';
+    self::$classmap_cache = self::$root .'/.yadro-classmap';
 
-    if (!is_readable($cache)) {
+    if (!is_readable(self::$classmap_cache)) {
       self::yadro_log('no cached class map');
       return false;
     }
 
-    if (!filesize($cache)) {
+    if (!filesize(self::$classmap_cache)) {
       self::yadro_log('empty cached classmap');
       return false;
     }
 
-    if (filemtime($cache) < filemtime(realpath('lib'))) {
+    if (filemtime(self::$classmap_cache) < filemtime(realpath('lib'))) {
       self::yadro_log('cached classmap is old');
       return false;
     }
 
-    if (filemtime($cache) < filemtime(__FILE__)) {
+    if (filemtime(self::$classmap_cache) < filemtime(__FILE__)) {
       self::yadro_log('cached classmap is old');
       return false;
     }
 
-    if (!is_array($tmp = unserialize(file_get_contents($cache)))) {
+    $tmp = unserialize(file_get_contents(self::$classmap_cache));
+    if (!is_array($tmp)) {
       self::yadro_log('unable to unserialize cached classmap: '. $tmp);
       return false;
     }
@@ -269,6 +287,13 @@ class Yadro
       if (!is_readable(realpath($filename))) {
         self::yadro_log("{$filename} is unreadable, "
           ."failing to autoload {$classname}");
+
+        if (file_exists(self::$classmap_cache)) {
+          if (is_writable(dirname(self::$classmap_cache))) {
+            unlink(self::$classmap_cache);
+            self::yadro_log('class map cache reset');
+          }
+        }
       } else {
         self::yadro_log("loading {$classname} from {$filename}");
         include(realpath($filename));
