@@ -24,7 +24,7 @@ class BebopConfig
       if ($this->path !== null and 'default.php' != basename($this->path))
         return $this->path;
 
-      $prefix = 'conf/';
+      $prefix = Yadro::root() .'/conf/';
 
       $result = array();
 
@@ -70,7 +70,7 @@ class BebopConfig
         $this->data = array();
       }
       elseif (substr($file, -4) == '.ini') {
-        $this->data = parse_ini_file(realpath($file), true);
+        $this->data = parse_ini_file($file, true);
         $this->isok = true;
       }
       else {
