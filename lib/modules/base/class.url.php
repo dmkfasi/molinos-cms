@@ -1,11 +1,10 @@
 <?php
 // vim: expandtab tabstop=2 shiftwidth=2 softtabstop=2:
 //
-// TODO: надо научиться корректно рекомбинировать чистые урлы при установке
-// CMS в папку, например: http://bebop.pdg.ru/path/to/cms/admin/ — надо
-// вырезать /path/to/cms/ из пути при парсинге.  Извне урлы приходят
-// в нормальном виде, т.к. срабатывает mod_rewrite и в параметр q= он
-// передаёт только admin/, а вот при ручном парсинге возникают проблемы.
+// TODO: надо научиться корректно рекомбинировать чистые урлы при установке CMS в папку,
+// например: http://bebop.pdg.ru/path/to/cms/admin/ — надо вырезать /path/to/cms/ из пути
+// при парсинге.  Извне урлы приходят в нормальном виде, т.к. срабатывает mod_rewrite и
+// в параметр q= он передаёт только admin/, а вот при ручном парсинге возникают проблемы.
 
 class url
 {
@@ -63,7 +62,8 @@ class url
       elseif ('.rpc' != substr($path, -4))
         $path .= '/';
 
-      $result = sprintf('%s://%s/%s%s%s', $this->scheme, $this->host, self::$root, $path, $this->getArgsAsString($isfile));
+      $result = sprintf('%s://%s/%s', $this->scheme, $this->host,
+        ltrim(self::$root . $path . $this->getArgsAsString($isfile), '/'));
     } else {
       $result = sprintf('%s://%s/%s%s', $this->scheme, $this->host, $this->path, $this->getArgsAsString());
     }
