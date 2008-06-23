@@ -9,6 +9,11 @@ class mcms
 
   const FLUSH_NOW = 1;
 
+  const VERSION_CURRENT = 1;
+  const VERSION_RELEASE = 2;
+  const VERSION_AVAILABLE = 3;
+  const VERSION_AVAILABLE_URL = 4;
+
   public static function html()
   {
     if (func_num_args() == 0 or func_num_args() > 3)
@@ -359,6 +364,9 @@ class mcms
       }
 
       bebop_on_json(array('args' => $output));
+
+      if (ob_get_length())
+        ob_end_clean();
 
       if (!empty($_SERVER['REQUEST_METHOD']))
         header("Content-Type: text/plain; charset=utf-8");
@@ -767,7 +775,7 @@ class mcms
     return MsgModule::send($from, $to, $subject, $text);
   }
 
-  public static function version()
+  public static function version($mode = mcms::VERSION_CURRENT)
   {
     static $version = null;
 
@@ -775,7 +783,27 @@ class mcms
       if (is_readable($fname = 'lib/version.info'))
         $version = file_get_contents($fname);
       else
-        $version = 'trunk';
+        $version = 'unknown.trunk';
+    }
+
+    switch ($mode) {
+    case self::VERSION_CURRENT:
+      return $version;
+
+    case self::VERSION_RELEASE:
+      return substr($version, 0, - strlen(strrchr($version, '.')));
+
+    case self::VERSION_AVAILABLE:
+      $release = self::version(self::VERSION_RELEASE);
+      $content = mcms_fetch_file('http://code.google.com/p/molinos-cms/downloads/list?q=label:R'. $release);
+
+      if (preg_match($re = "@http://molinos-cms\.googlecode\.com/files/molinos-cms-({$release}\.[0-9]+)\.zip@", $content, $m))
+        return $m[1];
+      else
+        return $version;
+
+    case self::VERSION_AVAILABLE_URL:
+      return 'http://molinos-cms.googlecode.com/files/molinos-cms-'. self::version(self::VERSION_AVAILABLE) .'.zip';
     }
 
     return $version;
