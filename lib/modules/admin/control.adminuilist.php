@@ -78,9 +78,7 @@ class AdminUIListControl extends Control
           $row .= mcms::html('a', array(
             'href' => $href,
             'class' => isset($this->picker) ? 'returnHref' : null,
-            'onclick' => isset($this->picker)
-              ? "return mcms_picker.mySubmit(\""
-              . l('?q=attachment.rpc&fid='. $node['id']) ."\",{$node['id']})" : null,
+            'onclick' => isset($this->picker) ? "return mcms_picker.mySubmit(\"". l('?q=attachment.rpc&fid='. $node['id']) ."\",{$node['id']})" : null,
             ), empty($value) ? '(без названия)' : mcms_plain($value, false));
         } elseif (empty($value))
           $row .= '&nbsp;';
@@ -263,14 +261,16 @@ class AdminUIListControl extends Control
   {
     $output = array();
 
-    if (null !== ($tmp = $this->getDebugLink($node)))
-      $output[] = $tmp;
-    if (null !== ($tmp = $this->getSuLink($node)))
-      $output[] = $tmp;
-    if (null !== ($tmp = $this->getZoomLink($node)))
-      $output[] = $tmp;
-    if (null !== ($tmp = $this->getViewLink($node)))
-      $output[] = $tmp;
+    if (empty($this->picker)) {
+      if (null !== ($tmp = $this->getDebugLink($node)))
+        $output[] = $tmp;
+      if (null !== ($tmp = $this->getSuLink($node)))
+        $output[] = $tmp;
+      if (null !== ($tmp = $this->getZoomLink($node)))
+        $output[] = $tmp;
+      if (null !== ($tmp = $this->getViewLink($node)))
+        $output[] = $tmp;
+    }
 
     if (!empty($output)) {
       return mcms::html('td', array(
