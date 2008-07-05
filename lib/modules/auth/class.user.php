@@ -189,7 +189,7 @@ class User
     	if (strpos($args[0], '@gmail.com')) {
     		$client = new GoogleAccount();
     		if (!$client->requestClientLogin($args[0], $args[1]))
-          throw new ForbiddenException(t('Авторизация посредством GoogleClient не удалась: @reason', array('@reason' => $client->getResponseBody())));
+          throw new ForbiddenException(t('Авторизация посредством GoogleClient не удалась: %reason', array('%reason' => $client->getResponseBody())));
     	} else
     	if (strpos($args[0], '@') or false === strpos($args[0], '.')) { //e-mail в качестве логина
         $node = Node::load(array('class' => 'user', 'name' => $args[0]));
