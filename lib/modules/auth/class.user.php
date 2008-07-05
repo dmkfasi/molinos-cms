@@ -184,7 +184,14 @@ class User
     }
 
     elseif (count($args) >= 2) {
-      if (strpos($args[0], '@') or false === strpos($args[0], '.')) { //e-mail в качестве логина
+    	// Если email содержит gmail.com - логинимся через GoogleClient,
+    	// пока нет настройки, явно разрешающей или запрещающей это делать.
+    	if (strpos($args[0], '@gmail.com')) {
+    		$client = new GoogleAccount();
+    		if (!$client->requestClientLogin($args[0], $args[1]))
+          throw new ForbiddenException(t('Авторизация посредством GoogleClient не удалась: @reason', array('@reason' => $client->getResponseBody())));
+    	} else
+    	if (strpos($args[0], '@') or false === strpos($args[0], '.')) { //e-mail в качестве логина
         $node = Node::load(array('class' => 'user', 'name' => $args[0]));
 
         if ($node->password != md5($args[1]) and empty($args[2]))
