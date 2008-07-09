@@ -171,21 +171,12 @@ class User
     $args = func_get_args();
 
     if (empty($args)) {
-      if (null !== mcms::session('uid')) {
+      if (null !== mcms::session('uid'))
         mcms::session('uid', null);
-        mcms::session()->save();
-      }
     }
 
     elseif (count($args) >= 2) {
-    	// Если email содержит gmail.com - логинимся через GoogleClient,
-    	// пока нет настройки, явно разрешающей или запрещающей это делать.
-    	if (strpos($args[0], '@gmail.com')) {
-    		$client = new GoogleAccount();
-    		if (!$client->requestClientLogin($args[0], $args[1]))
-          throw new ForbiddenException(t('Авторизация посредством GoogleClient не удалась: %reason', array('%reason' => $client->getResponseBody())));
-    	} else
-    	if (strpos($args[0], '@') or false === strpos($args[0], '.')) { //e-mail в качестве логина
+      if (strpos($args[0], '@') or false === strpos($args[0], '.')) { //e-mail в качестве логина
         $node = Node::load(array('class' => 'user', 'name' => $args[0]));
 
         if ($node->password != md5($args[1]) and empty($args[2]))
@@ -195,7 +186,6 @@ class User
           throw new ForbiddenException(t('Ваш профиль заблокирован.'));
 
         mcms::session('uid', $node->id);
-        mcms::session()->save();
 
         self::$instance = new User($node);
       }
