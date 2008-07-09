@@ -1,11 +1,11 @@
 <?php
 
-class DBSchema_node__session extends TableManager
+class DBSchema_node__sessions extends TableManager
 {
   public function __construct()
   {
     $this->columns['sid'] = array(
-        'type' => 'char(32)',
+        'type' => 'char(40)',
         'required' => true,
         'key' => 'pri',
         );
