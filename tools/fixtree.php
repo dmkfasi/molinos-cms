@@ -1,4 +1,7 @@
 <?php
+// Скрипт для выправления границ объектов.  Запускать надо
+// при появлении ошибок типа «duplicate key for ... during UPDATE node...»
+// 2008-07-18 Justin Forest
 
 require(dirname(__FILE__) .'/../lib/bootstrap.php');
 
@@ -8,15 +11,15 @@ try {
   $ids = mcms::db()->getResultsK("id",
     "SELECT `id`, `parent_id` FROM `node` "
     ."WHERE `parent_id` IS NOT NULL OR `id` IN "
-    ."(SELECT `parent_id` FROM `node`) "
-    ."ORDER BY `left`");
+    ."(SELECT `parent_id` FROM `node`)");
 
   printf("Found %d nodes, rebuilding tree.\n", count($ids));
   $new = build_tree($ids);
 
   printf("Resetting borders.\n");
   mcms::db()->exec("UPDATE `node` SET `left` = NULL, `right` = NULL");
-  $sth = mcms::db()->prepare("UPDATE `node` SET `left` = ?, `right` = ? "
+  $sth = mcms::db()->prepare("UPDATE `node` "
+    ."SET `left` = ?, `right` = ? "
     ."WHERE `id` = ?");
   foreach ($new as $k => $v)
     $sth->execute(array($v['left'], $v['right'], $v['id']));
