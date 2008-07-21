@@ -27,9 +27,9 @@
 //   (2) Place your code in htdocs/lib/modules/*/class.*.php files.
 //
 //   (3) Include yadro.php and call Yadro::init().  You can pass it
-//       the initial message name, which defaults to ru_molinos_yadro_start.
+//       the initial message name, which defaults to yadro_start.
 //
-//   (4) Create a class which has the static on_ru_molinos_yadro_start()
+//   (4) Create a class which has the static on_yadro_start()
 //       method and extends Yadro.  This method will be called when a request
 //       arrives.  You can do whatever you want in that code, typically
 //       this involves calling out other modules, processing results and
@@ -47,6 +47,12 @@
 //       in your application's root folder.  The trace is built using
 //       the standard error_log() function, so look for it in logs.
 //
+// Control files:
+//
+//   .yadro-debug:  enables tracing to error_log,
+//   .yadro-reload: flushes class/method map (the file is deleted afterwards),
+//
+//
 // Licensed under GPL.  Based on parabellym and influenced by QNX.
 //
 // (c) Justin Forest, 2008.
@@ -57,14 +63,16 @@ class Yadro
 {
   private static $methodmap;
   private static $classmap;
-  private static $classmap_cache;
 
   private static $yadro_debug = false;
   private static $root;
 
   private static $time;
 
-  public final static function init($initmsg = 'ru_molinos_yadro_start')
+  // Reference to a cache interface object.
+  private static $cache;
+
+  public final static function init($initmsg = 'yadro_start')
   {
     if (null !== self::$methodmap)
       throw new Exception("Yadro is already initialized.");
@@ -78,61 +86,80 @@ class Yadro
     if (self::$yadro_debug = file_exists('.yadro-debug')) {
       if (!ini_get('log_errors'))
         ini_set('log_errors', true);
-      self::yadro_log('logging enabled');
+      self::log('logging enabled');
     }
 
     self::init_method_map();
     self::init_autoload();
+
+    if (!empty($_GET['yadro_show_map'])) {
+      header('content-type: text/plain; charset=utf-8');
+      die(var_dump(self::$methodmap, self::$classmap));
+    }
 
     self::call($initmsg);
   }
 
   public static final function finish()
   {
-    self::yadro_log(sprintf('request processed in %s msec',
+    self::log(sprintf('request processed in %s msec',
       microtime(true) - self::$time));
   }
 
   // TODO: добавить отлов циклов.
-  protected static final function call($name)
+  public static final function call($name)
   {
     if (null === self::$methodmap)
       throw new Exception('Yadro needs to be initialized befor being used.');
+
+    if ('on_' == substr($name, 0, 3))
+      throw new Exception('You must NOT have the "on_" prefix in message names.');
 
     $results = array();
     $method = 'on_'. str_replace('.', '_', $name);
 
     $arguments = array_slice(func_get_args(), 1);
 
-    self::yadro_log('sending '. $name);
-
     if (array_key_exists($method, self::$methodmap)) {
+      self::log('sending '. $name);
+
       foreach (self::$methodmap[$method] as $class) {
         if (get_parent_class($class) != __CLASS__) {
-          self::yadro_log($class .' is not a subsclass of '. __CLASS__);
+          self::log($class .' is not a subsclass of '. __CLASS__);
         } else {
+          // self::log($method .': delivering to '. $class);
           $tmp = call_user_func(array($class, 'dispatch'),
             $class, $method, $arguments);
           if (null !== $tmp)
             $results[$class] = $tmp;
         }
       }
+    } else {
+      self::log($name .': no recipients, not delivered');
     }
 
     return empty($results) ? null : $results;
   }
 
   // Вывод отладочного сообщения.
-  protected final static function dump()
+  public final static function dump()
   {
     if (ob_get_length())
       ob_end_clean();
 
     $output = array();
+    $exception = false;
 
     if (func_num_args()) {
-      foreach (func_get_args() as $arg) {
-        $output[] = preg_replace('/ =>\s+/', ' => ', var_export($arg, true));
+      $args = func_get_args();
+
+      if (count($args) == 1 and $args[0] instanceof Exception) {
+        $exception = true;
+        $output[] = get_class($args[0]);
+        $output[] = $args[0]->getMessage();
+      } else {
+        foreach ($args as $arg)
+          $output[] = preg_replace('/ =>\s+/', ' => ', var_export($arg, true));
       }
     } else {
       $output[] = 'breakpoint';
@@ -145,7 +172,10 @@ class Yadro
 
     if (true /* !empty($_SERVER['REMOTE_ADDR']) */) {
       printf("--- backtrace (time: %s) ---\n", microtime());
-      print self::__backtrace();
+      if ($exception)
+        print self::__backtrace($args[0]->getTrace());
+      else
+        print self::__backtrace();
     }
 
     die();
@@ -159,11 +189,11 @@ class Yadro
 
   private static final function dispatch($class, $name, array $arguments)
   {
-    self::yadro_log('dispatching '. $name);
+    // self::log('dispatching '. $name);
     return call_user_func_array(array($class, $name), $arguments);
   }
 
-  private static function yadro_log($message)
+  public static function log($message)
   {
     if (self::$yadro_debug === true)
       error_log('[yadro.'. posix_getpid() .'] '. $message);
@@ -174,6 +204,8 @@ class Yadro
     if (self::init_method_map_from_cache())
       return;
 
+    self::log('no class map in cache, rebuilding.');
+
     $methods = $classes = array();
 
     $filemask = 'lib/modules/*/{module,class}.*.php';
@@ -182,32 +214,32 @@ class Yadro
 
     foreach (glob($filemask, GLOB_BRACE|GLOB_NOSORT) as $file) {
       if (!is_readable($file)) {
-        self::yadro_log($file .' is unreadable');
+        self::log($file .' is unreadable');
         continue;
       }
 
       $content = file_get_contents($file);
 
       if (!preg_match('@^\s*class\s+([a-zA-Z0-9_]+)@m', $content, $m1)) {
-        self::yadro_log('[nc] '. $file);
+        self::log('[nc] '. $file);
         continue;
       }
 
       // Класс с таким именем уже попадался — пропускаем, иначе будут коллизии.
       if (array_key_exists($classname = $m1[1], $classes)) {
-        self::yadro_log('[dc] '. $classname .', '. $file);
+        self::log('[dc] '. $classname .', '. $file);
         continue;
       } else {
         $classes[$m1[1]] = $file;
       }
 
       if (!preg_match_all($methodre, $content, $m2)) {
-        self::yadro_log('[nh] '. $file);
+        self::log('[nh] '. $file);
         continue;
       }
 
       foreach ($m2[1] as $methodname) {
-        self::yadro_log($file .' handles '. $methodname);
+        self::log($file .' handles '. $methodname);
         $methods[$methodname][] = $classname;
       }
     }
@@ -215,59 +247,27 @@ class Yadro
     self::$classmap = $classes;
     self::$methodmap = $methods;
 
-    if (!is_writable(self::$root)) {
-      self::yadro_log('cwd unwritable, classmap not cached');
-    } else {
-      $cache = serialize(array(
-        'classes' => $classes,
-        'methods' => $methods,
-        ));
-      file_put_contents(self::$root .'/.yadro-classmap', $cache);
-      self::yadro_log('classmap cached in .yadro-classmap');
-    }
+    self::cache('classmap', array(
+      'classes' => $classes,
+      'methods' => $methods,
+      ));
   }
 
   private static function init_method_map_from_cache()
   {
-    self::$classmap_cache = self::$root .'/.yadro-classmap';
-
-    if (!is_readable(self::$classmap_cache)) {
-      self::yadro_log('no cached class map');
-      return false;
+    if (!file_exists('.yadro-reload')) {
+      if (is_array($tmp = self::cache('classmap'))) {
+        self::$classmap = $tmp['classes'];
+        self::$methodmap = $tmp['methods'];
+        self::log('using cached classmap');
+        return true;
+      }
+    } else {
+      if (is_writable(getcwd()))
+        unlink('.yadro-reload');
     }
 
-    if (!filesize(self::$classmap_cache)) {
-      self::yadro_log('empty cached classmap');
-      return false;
-    }
-
-    if (filemtime(self::$classmap_cache) < filemtime(realpath('lib'))) {
-      self::yadro_log('cached classmap is old');
-      return false;
-    }
-
-    if (filemtime(self::$classmap_cache) < filemtime(__FILE__)) {
-      self::yadro_log('cached classmap is old');
-      return false;
-    }
-
-    $tmp = unserialize(file_get_contents(self::$classmap_cache));
-    if (!is_array($tmp)) {
-      self::yadro_log('unable to unserialize cached classmap: '. $tmp);
-      return false;
-    }
-
-    if (!array_key_exists('classes', $tmp))
-      return false;
-    if (!array_key_exists('methods', $tmp))
-      return false;
-
-    self::$classmap = $tmp['classes'];
-    self::$methodmap = $tmp['methods'];
-
-    self::yadro_log('using cached classmap');
-
-    return true;
+    return false;
   }
 
   private static function init_autoload()
@@ -285,21 +285,18 @@ class Yadro
       $filename = self::$classmap[$classname];
 
       if (!is_readable(realpath($filename))) {
-        self::yadro_log("{$filename} is unreadable, "
+        self::log("{$filename} is unreadable, "
           ."failing to autoload {$classname}");
 
-        if (file_exists(self::$classmap_cache)) {
-          if (is_writable(dirname(self::$classmap_cache))) {
-            unlink(self::$classmap_cache);
-            self::yadro_log('class map cache reset');
-          }
-        }
+        // TODO: reset cache
+        self::cache('classmap', null);
+        self::log('class map cache reset');
       } else {
-        self::yadro_log("loading {$classname} from {$filename}");
+        self::log("loading {$classname} from {$filename}");
         include(realpath($filename));
       }
     } else {
-      self::yadro_log("class {$classname} could not be loaded");
+      self::log("class {$classname} could not be loaded");
     }
   }
 
@@ -342,4 +339,89 @@ class Yadro
 
     return $output;
   }
+
+  protected static function cache()
+  {
+    if (null === self::$cache) {
+      if (function_exists('xcache_set')) {
+        self::$cache = new YadroCacheX();
+        self::log('cache engine: xcache');
+      } elseif (function_exists('dba_open')) {
+        self::$cache = new YadroDBA();
+      } else {
+        self::log('cache engine: none');
+        header('HTTP/1.1 501 Not Implemented');
+        header('content-type: text/html; charset=utf-8');
+        die('<html><head><title>Fatal Error</title></head><body>'
+          .'<h1>Fatal Error</h1><p>No cache engine.  Please install '
+          .'either of: xcache, apc, dba, sqlite.</p></body></html>');
+      }
+    }
+
+    $args = func_get_args();
+
+    switch (func_num_args()) {
+      case 0:
+        return self::$cache;
+      case 1:
+        return self::$cache->get($args[0]);
+      case 2:
+        return self::$cache->set($args[0], $args[1]);
+      default:
+        return false;
+    }
+  }
 };
+
+// XCache interface
+class YadroCacheX
+{
+  public function get($key)
+  {
+    if ($tmp = xcache_get($key))
+      return unserialize($tmp);
+    return false;
+  }
+
+  public function set($key, $value)
+  {
+    return xcache_set($key, serialize($value));
+  }
+}
+
+class YadroDBA
+{
+  const filename = '.yadro-cache';
+
+  private $db;
+  private $write = false;
+
+  public function name($link = false)
+  {
+    return $link
+      ? '<a href=\'http://docs.php.net/dba\'>DBA</a>'
+      : 'DBA';
+  }
+
+  public function __construct()
+  {
+    $this->db = dba_open(getcwd() .DIRECTORY_SEPARATOR. self::filename, 'cd');
+  }
+
+  public function get($key)
+  {
+    if (false !== ($tmp = dba_fetch($key, $this->db)))
+      return unserialize($tmp);
+    return false;
+  }
+
+  public function set($key, $value)
+  {
+    if (!$this->write) {
+      dba_close($this->db);
+      $this->db = dba_open(getcwd() .DIRECTORY_SEPARATOR. self::filename, 'wd');
+    }
+
+    return dba_replace($key, serialize($value), $this->db);
+  }
+}

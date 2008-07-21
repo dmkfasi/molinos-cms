@@ -1,0 +1,25 @@
+<html>
+<head>
+<title>Molinos CMS</title>
+</head>
+<body>
+<h1>Molinos CMS</h1>
+<div id='content'>
+
+<?php
+  if (!empty($blocks)) {
+    foreach ($blocks as $k => $v) {
+      print mcms::html('div', array(
+        'id' => 'block-'. $k,
+        ), $v);
+    }
+  }
+?>
+
+</div>
+<div id='footer'>
+<hr/>
+<p><?php print mcms::signature(); ?></p>
+</div>
+</body>
+</html>

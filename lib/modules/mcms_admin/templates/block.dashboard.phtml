@@ -1,0 +1,21 @@
+<?php
+
+if (!empty($data)) {
+  print '<div id=\'dashboard\'>';
+
+  foreach ($data as $group => $icons) {
+    print '<div class=\'block\'>';
+    print '<h3>'. $group .'</h3>';
+    print '<ul>';
+
+    foreach ($icons as $icon) {
+      $item = "<a href='{$icon['url']}'>{$icon['text']}</a>";
+      print mcms::html('li', $item);
+    }
+
+    print '</ul>';
+    print '</div>';
+  }
+
+  print '</div>';
+}
