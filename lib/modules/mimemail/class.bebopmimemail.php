@@ -20,6 +20,7 @@ class BebopMimeMail implements iModuleConfig
 
     mcms::log('mail', t('to=%to, subject=%subject', array('%to' => join(',', $to), '%subject' => $subject)));
 
+    $transport = (null == BebopConfig::getInstance()->mail_server) ? 'mail' : 'smtp';
     $mail = new htmlMimeMail();
 
     $mail->setSMTPParams(mcms::config('mail_server'));
@@ -45,7 +46,7 @@ class BebopMimeMail implements iModuleConfig
         if (!empty($v))
           $mail->setHeader($k, $v);
 
-    return $mail->send($to);
+    return $mail->send($to, $transport);
   }
 
   public static function formGetModuleConfig()
