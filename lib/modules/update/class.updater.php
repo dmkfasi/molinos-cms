@@ -59,8 +59,37 @@ class Updater implements iAdminUI, iRemoteCall
     case 'update':
       self::download();
 
+    case 'check':
+      if (null == ($modules = $ctx->get('modules', null)))
+        throw new RuntimeException('не задан список модулей для проверки обновлений.');
+      else
+        self::checkNewerVersion($modules);
+      break;
+
     default:
       throw new BadRequestException();
+    }
+  }
+
+  private static function checkNewerVersion($list)
+  {
+    $desc = split(',', $list);
+
+    foreach($desc as $i => $module) {
+      list($name, $version) = split(':', $module);
+      // Пока так. Потом, когда будет возможность определять
+      // текущую версию отдельного модуля, будет переработано.
+      switch ($name) {
+        case 'base':
+          $res = version_compare(mcms::version(mcms::VERSION_AVAILABLE), $version);
+          var_dump($res);
+          $url = mcms::version(mcms::VERSION_AVAILABLE);
+          var_dump($url);
+          $url = mcms::version(mcms::VERSION_AVAILABLE_URL);
+          $headers = get_headers($url, 1);
+          var_dump($headers);
+          break;
+      }
     }
   }
 
