@@ -3,7 +3,7 @@
 
 class Updater implements iAdminUI, iRemoteCall
 {
-  public static function onGet(RequestContext $ctx)
+  public static function onGet(Context $ctx)
   {
     $version = mcms::version();
     $available = mcms::version(mcms::VERSION_AVAILABLE);
@@ -37,7 +37,7 @@ class Updater implements iAdminUI, iRemoteCall
           ));
         $form = mcms::html('form', array(
           'method' => 'post',
-          'action' => 'update.rpc?action=update',
+          'action' => '?q=update.rpc&action=update',
           ), $input);
         break;
       default:
@@ -53,14 +53,43 @@ class Updater implements iAdminUI, iRemoteCall
     return $output;
   }
 
-  public static function hookRemoteCall(RequestContext $ctx)
+  public static function hookRemoteCall(Context $ctx)
   {
     switch ($ctx->get('action')) {
     case 'update':
       self::download();
 
+    case 'check':
+      if (null == ($modules = $ctx->get('modules', null)))
+        throw new RuntimeException('не задан список модулей для проверки обновлений.');
+      else
+        self::checkNewerVersion($modules);
+      break;
+
     default:
       throw new BadRequestException();
+    }
+  }
+
+  private static function checkNewerVersion($list)
+  {
+    $desc = split(',', $list);
+
+    foreach($desc as $i => $module) {
+      list($name, $version) = split(':', $module);
+      // Пока так. Потом, когда будет возможность определять
+      // текущую версию отдельного модуля, будет переработано.
+      switch ($name) {
+        case 'base':
+          $res = version_compare(mcms::version(mcms::VERSION_AVAILABLE), $version);
+          var_dump($res);
+          $url = mcms::version(mcms::VERSION_AVAILABLE);
+          var_dump($url);
+          $url = mcms::version(mcms::VERSION_AVAILABLE_URL);
+          $headers = get_headers($url, 1);
+          var_dump($headers);
+          break;
+      }
     }
   }
 
@@ -78,7 +107,7 @@ class Updater implements iAdminUI, iRemoteCall
     self::unpack($tmpname);
 
     // FIXME: вынести в одно место со всем остальным сканированием.
-    $filename = mcms::config('tmpdir') .'/.modmap.php';
+    $filename = mcms::modmap();
     if (file_exists($filename))
       unlink($filename);
 
