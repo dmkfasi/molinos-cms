@@ -296,4 +296,37 @@ class Context
 
     return $ctx;
   }
+
+
+  /**
+   * Возвращает наиболее подходящий язык из списка предложенных.
+   */
+  public function lang($possible = array())
+  {
+    if (empty($possible))
+      return mcms::config('language', 'ru');
+
+    if (isset($_SERVER['HTTP_ACCEPT_LANGUAGE'])) {
+      $languages = preg_split ('/[;,]+/',$_SERVER['HTTP_ACCEPT_LANGUAGE']);
+      foreach ($languages as $key => $value) {
+        if (substr($value,0,2) == 'q=') {
+          unset($languages[$key]);
+          continue;
+        }
+
+        $value = preg_split('/[-]+/',$value);
+        $languages[$key] = strtolower($value[0]);
+      }
+
+      $languages = array_unique($languages);
+
+      foreach ($possible as $i => $lang) {
+        if (in_array($lang, $languages)) {
+          return $lang;
+        }
+      }
+    }
+
+    return $possible[0];
+  }
 }
