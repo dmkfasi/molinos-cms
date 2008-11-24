@@ -11,15 +11,9 @@ class mcms_sqlite_driver extends PDO_Singleton
 
     $dsn = 'sqlite:'. $this->dbfile;
 
-    if (':memory:'  != $this->dbfile) {
-      if (!file_exists($this->dbfile)) {
-        if ('conf/default.db' == $this->dbfile) {
-          if (file_exists($dist = $this->dbfile .'.dist')) {
-            if (is_writable(dirname(realpath($dist))))
-              copy($dist, $this->dbfile);
-          }
-        }
-      }
+    if (':memory:' != $this->dbfile) {
+      if (!file_exists($this->dbfile))
+        throw new NotInstalledException('db');
     }
 
     try {
@@ -40,7 +34,13 @@ class mcms_sqlite_driver extends PDO_Singleton
   {
     try {
       $sth = $this->prepare($sql);
+      $time = microtime(true);
       $sth->execute($params);
+      $time = microtime(true) - $time;
+
+      parent::loga("\n     -- params: "
+        . str_replace("\n", "", var_export($params, true))
+        . "\n     -- timing: ". number_format($time, 5));
     } catch (PDOException $e) {
       $info = $this->errorInfo();
 
@@ -125,8 +125,7 @@ class mcms_sqlite_driver extends PDO_Singleton
       'RANDOM()',
       ), $newsql);
 
-    if ($sql != $newsql)
-      mcms::log('sqlite', $sql .' rewritten to: '. $newsql);
+    // if ($sql != $newsql) mcms::log('sqlite', $sql .' rewritten to: '. $newsql);
 
     return parent::prepare($newsql);
   }
@@ -142,9 +141,11 @@ class mcms_sqlite_driver extends PDO_Singleton
     $rows = $this->getResults($sql);
 
     foreach ($rows as $k => $el) {
-      $sql = "DROP TABLE `{$el['tbl_name']}`";
-      $this->exec($sql);
-      $this->commit();
+      if (false === strstr($el['tbl_name'], 'sqlite_')) {
+        $sql = "DROP TABLE `{$el['tbl_name']}`";
+        $this->exec($sql);
+        $this->commit();
+      }
     }
 
     $sql = "SELECT `name` FROM `sqlite_master` WHERE `type` = 'index'";

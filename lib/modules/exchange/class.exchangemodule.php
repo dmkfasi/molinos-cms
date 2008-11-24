@@ -96,7 +96,8 @@ class ExchangeModule implements iRemoteCall, iAdminMenu, iAdminUI
       $filetype = substr($fn, -4);
 
       if ($filetype == '.xml') { // Это не архив, а xml
-        $xmlstr = implode(file($newfn), $arr);
+        //$xmlstr = implode(file($newfn), $arr); REMOVE
+        $xmlstr = file_get_contents($newfn);
       }
       else if ($filetype == '.zip') { //Это zip-архив
         $zip = new ZipArchive;
@@ -106,10 +107,6 @@ class ExchangeModule implements iRemoteCall, iAdminMenu, iAdminUI
       else { // неизвестный тип файла
          mcms::redirect("admin?mode=exchange&preset=export&result=badfiletype");
       }
-
-      mcms::db()->clearDB();
-
-      //Installer::CreateTables();
 
       if ($filetype == '.zip') {
         $zip->extractTo(MCMS_ROOT);
@@ -165,7 +162,7 @@ class ExchangeModule implements iRemoteCall, iAdminMenu, iAdminUI
       // Логинимся в качестве рута.
       User::authorize(mcms::user()->name, null, true);
 
-      mcms::redirect("admin?module=exchange&preset=export&result=upgradeok");
+      mcms::redirect("?q=admin&module=exchange&preset=export&result=upgradeok");
     }
   }
 
@@ -239,126 +236,13 @@ class ExchangeModule implements iRemoteCall, iAdminMenu, iAdminUI
       $xmlstr = $source;
     }
 
+    mcms::db()->clearDB();
     mcms::db()->beginTransaction();
 
-    $xml = new SimpleXMLElement($xmlstr);
+    $sax = new SaxImport();
+    $sax->parse($source);
 
-    $Nodes = array();
-    $curnode = array();
-    $larr = array();
-    $newid = array();
-
-    mcms::log('exchange', 'importing nodes');
-
-    foreach ($xml->nodes->node as $node) {
-      $curnode = array();
-
-      foreach ($node->attributes() as $a => $v)
-        $curnode[$a] = strval($v);
-
-      foreach ($node as $attr => $val) {
-        if (false === ($obj = unserialize(urldecode($val))))
-          throw new RuntimeException('Unable to unserialize: '. $val);
-        $curnode[$attr] = $obj;
-      }
-
-      $oldid = $curnode['id'];
-
-      foreach (array('id', 'rid', 'left', 'right') as $k)
-        if (array_key_exists($k, $curnode))
-          unset($curnode[$k]);
-
-      // Восстанавливаем родителей.
-      if (!empty($curnode['parent_id'])) {
-        if (array_key_exists($curnode['parent_id'], $newid))
-          $curnode['parent_id'] = $newid[$curnode['parent_id']];
-        else {
-          mcms::log('import', sprintf('node %d(%s) lost its parent_id',
-            $curnode['class'], $oldid));
-          $curnode['parent_id'] = null;
-        }
-      }
-
-      $SiteNode = Node::create(strval($node['class']), $curnode);
-      $SiteNode->save();
-
-      $curid = $SiteNode->id;
-      $newid[$oldid] = $curid; // ставим соответствие между старым id и новым
-    }
-
-    mcms::log('exchange', 'importing relations');
-
-    $at = array();
-    // внесём записи в `node__rel`
-    foreach ($xml->links->link as $link) {
-      foreach ($link->attributes() as $a => $v)
-        $at[$a] = strval($v);
-
-      $n = $at['nid'];
-      $t = $at['tid'];
-
-      if (array_key_exists($n, $newid))
-        $nid = $newid[$n];
-      if (array_key_exists($t, $newid))
-        $tid = $newid[$t];
-
-      if (!empty($nid) and !empty($tid)) {
-        $key = null;
-        $order = null;
-
-        if (array_key_exists('order', $v))
-          $order = $attr['order'];
-
-        if (array_key_exists('key', $v))
-          $key = $attr['key'];
-
-        mcms::db()->exec("INSERT INTO `node__rel` (`tid`, `nid`, `key`, `order`) VALUES (:tid, :nid, :key, :order)",          array(
-          ':tid' => $tid,
-          ':nid' => $nid,
-          ':key' => $key,
-          ':order' => $order
-          ));
-      }
-    }
-
-    // Внесём записи в `node__access`
-    mcms::log('exchange', 'importing access');
-
-    foreach ($xml->accessrights->access as $acc) {
-      $at = array();
-
-      foreach ($acc->attributes() as $a => $v)
-        $at[$a] = strval($v);
-
-      $nd = $at['nid'];
-      $ud = empty($at['uid']) ? 0 : $at['uid'];
-
-      if (array_key_exists($nd, $newid))
-        $nid = $newid[$nd];
-
-      if (!empty($ud) and array_key_exists($ud, $newid))
-        $uid = $newid[$ud];
-
-      if (!empty($nid)) {
-        $c = empty($at['c']) ? 0 : 1;
-        $r = empty($at['r']) ? 0 : 1;
-        $u = empty($at['u']) ? 0 : 1;
-        $d = empty($at['d']) ? 0 : 1;
-        $p = empty($at['p']) ? 0 : 1;
-
-        mcms::db()->exec("INSERT INTO `node__access`(`nid`, `uid`, `c`, `r`, `u`, `d`, `p`) VALUES (:nid, :uid, :c, :r, :u, :d, :p)", array(
-          ':nid' => $nid,
-          ':uid' => empty($uid) ? 0 : $uid,
-          ':c' => $c,
-          ':r' => $r,
-          ':u' => $u,
-          ':d' => $d,
-          ':p' => $p,
-          ));
-      }
-    }
-
-    return 1;
+    return true;
   }
 
   public static function getProfileList()
@@ -400,7 +284,7 @@ class ExchangeModule implements iRemoteCall, iAdminMenu, iAdminUI
 
       $icons[] = array(
         'group' => 'structure',
-        'href' => 'admin?module=exchange',
+        'href' => '?q=admin&module=exchange',
         'title' => t('Бэкапы'),
         'description' => t('Бэкап и восстановление данных в формате XML.'),
         );

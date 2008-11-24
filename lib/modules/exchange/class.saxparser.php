@@ -1,19 +1,14 @@
 <?php
 
-$sax = new SaxParser();
-$sax->parse('siteprofile.xml');
-
 class SaxParser {
 
-  private $data = null;
-  private $parser = null;
+  protected $parser = null;
 
-  public function __construct()
+  public function __construct($encoding = 'utf-8')
   {
-    $this->parser = $ns ?
-      xml_parser_create_ns($encoding, $separator) :
-      xml_parser_create($encoding);
+    $this->parser = xml_parser_create($encoding);
 
+    xml_parser_set_option($this->parser, XML_OPTION_CASE_FOLDING, 0);
     xml_set_object($this->parser, $this);
     xml_set_default_handler($this->parser, 'default');
     xml_set_element_handler($this->parser, 'start_element', 'end_element');
@@ -28,17 +23,14 @@ class SaxParser {
 
   public function start_element($parser, $name, $attr)
   {
-    // var_dump($name, $attr);
   }
 
   public function end_element($parser, $name)
   {
-    // var_dump($name);
   }
 
   public function cdata($parser, $cdata)
   {
-    var_dump($cdata);
   }
 
   public function parse($file)
